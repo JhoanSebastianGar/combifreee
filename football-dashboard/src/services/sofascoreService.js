@@ -63,20 +63,14 @@ async function fetchOdds(eventId) {
   try {
     const data = await safeFetch(`${BASE}/event/${eventId}/odds/1/all`)
     const markets = data?.markets ?? []
+    
+    // ── Mercado 1X2 ────────────────────────────────────────────────────────
     const market1x2 = markets.find(
       m =>
         m.marketName === 'Full time' ||
         m.marketName === '1X2' ||
         m.marketName?.toLowerCase().includes('full time')
     )
-    if (!market1x2) return null
-
-    const choices = market1x2.choices ?? []
-    const find = (n) => choices.find(c => c.name === n || c.sourceId === n)
-    const home = find('1') ?? find('Home')
-    const draw = find('X') ?? find('Draw')
-    const away = find('2') ?? find('Away')
-    if (!home || !draw || !away) return null
 
     const parseOdd = (v) => {
       if (!v) return null
@@ -88,24 +82,93 @@ async function fetchOdds(eventId) {
       return parseFloat(s)
     }
 
-    const o1 = parseOdd(home.fractionalValue)
-    const oX = parseOdd(draw.fractionalValue)
-    const o2 = parseOdd(away.fractionalValue)
-    if (!o1 || !oX || !o2) return null
+    let odds1x2 = null
+    if (market1x2) {
+      const choices = market1x2.choices ?? []
+      const find = (n) => choices.find(c => c.name === n || c.sourceId === n)
+      const home = find('1') ?? find('Home')
+      const draw = find('X') ?? find('Draw')
+      const away = find('2') ?? find('Away')
+      
+      if (home && draw && away) {
+        const o1 = parseOdd(home.fractionalValue)
+        const oX = parseOdd(draw.fractionalValue)
+        const o2 = parseOdd(away.fractionalValue)
+        
+        if (o1 && oX && o2) {
+          const raw1 = 1 / o1, rawX = 1 / oX, raw2 = 1 / o2
+          const total = raw1 + rawX + raw2
+          
+          odds1x2 = {
+            homeOdds:    o1,
+            drawOdds:    oX,
+            awayOdds:    o2,
+            homeImplied: parseFloat(((raw1 / total) * 100).toFixed(1)),
+            drawImplied: parseFloat(((rawX / total) * 100).toFixed(1)),
+            awayImplied: parseFloat(((raw2 / total) * 100).toFixed(1)),
+            overround:   parseFloat(((total - 1) * 100).toFixed(2)),
+          }
+        }
+      }
+    }
 
-    const raw1 = 1 / o1
-    const rawX = 1 / oX
-    const raw2 = 1 / o2
-    const total = raw1 + rawX + raw2
+    // ── Mercado Más/Menos Goles ────────────────────────────────────────────
+    // Sofascore usa "Over/Under" o "Total goals"
+    const marketTotals = markets.find(
+      m =>
+        m.marketName?.toLowerCase().includes('over/under') ||
+        m.marketName?.toLowerCase().includes('total goals') ||
+        m.marketName?.toLowerCase().includes('goals o/u')
+    )
 
+    let totals = null
+    if (marketTotals) {
+      const choices = marketTotals.choices ?? []
+      
+      // Buscar líneas 2.5 y 1.5
+      const findLine = (line) => {
+        const over = choices.find(c => 
+          (c.name?.includes(`Over ${line}`) || c.sourceId?.includes(`over_${line}`)) &&
+          c.fractionalValue
+        )
+        const under = choices.find(c => 
+          (c.name?.includes(`Under ${line}`) || c.sourceId?.includes(`under_${line}`)) &&
+          c.fractionalValue
+        )
+        
+        if (!over || !under) return null
+        
+        const oOver = parseOdd(over.fractionalValue)
+        const oUnder = parseOdd(under.fractionalValue)
+        if (!oOver || !oUnder) return null
+        
+        const rawOver = 1 / oOver, rawUnder = 1 / oUnder
+        const totalProb = rawOver + rawUnder
+        
+        return {
+          line:          parseFloat(line),
+          overOdds:      oOver,
+          underOdds:     oUnder,
+          overImplied:   parseFloat(((rawOver / totalProb) * 100).toFixed(1)),
+          underImplied:  parseFloat(((rawUnder / totalProb) * 100).toFixed(1)),
+          overround:     parseFloat(((totalProb - 1) * 100).toFixed(2)),
+        }
+      }
+
+      const line25 = findLine('2.5')
+      const line15 = findLine('1.5')
+      
+      if (line25 || line15) {
+        totals = { line25, line15 }
+      }
+    }
+
+    // Devolver ambos mercados (puede ser que solo uno esté disponible)
+    if (!odds1x2 && !totals) return null
+    
     return {
-      homeOdds:    o1,
-      drawOdds:    oX,
-      awayOdds:    o2,
-      homeImplied: parseFloat(((raw1 / total) * 100).toFixed(1)),
-      drawImplied: parseFloat(((rawX / total) * 100).toFixed(1)),
-      awayImplied: parseFloat(((raw2 / total) * 100).toFixed(1)),
-      overround:   parseFloat(((total - 1) * 100).toFixed(2)),
+      ...(odds1x2 || {}),
+      totals,
     }
   } catch {
     return null
@@ -254,12 +317,30 @@ export function formatMatchForPrompt(match) {
     `Liga: ${match.league} | Fecha: ${match.date} ${match.time}`,
   ]
 
-  // ── Cuotas ────────────────────────────────────────────────────────────────
+  // ── Cuotas 1X2 ────────────────────────────────────────────────────────────
   if (match.odds) {
     const o = match.odds
-    lines.push(
-      `Cuotas 1X2: Local ${o.homeOdds} (${o.homeImplied}%) | Empate ${o.drawOdds} (${o.drawImplied}%) | Visitante ${o.awayOdds} (${o.awayImplied}%) | Margen casa: ${o.overround}%`
-    )
+    if (o.homeOdds && o.drawOdds && o.awayOdds) {
+      lines.push(
+        `Cuotas 1X2: Local ${o.homeOdds} (${o.homeImplied}%) | Empate ${o.drawOdds} (${o.drawImplied}%) | Visitante ${o.awayOdds} (${o.awayImplied}%) | Margen: ${o.overround}%`
+      )
+    }
+    
+    // ── Cuotas Más/Menos Goles ────────────────────────────────────────────
+    if (o.totals) {
+      const parts = []
+      if (o.totals.line25) {
+        const t = o.totals.line25
+        parts.push(`2.5: Más ${t.overOdds} (${t.overImplied}%) / Menos ${t.underOdds} (${t.underImplied}%)`)
+      }
+      if (o.totals.line15) {
+        const t = o.totals.line15
+        parts.push(`1.5: Más ${t.overOdds} (${t.overImplied}%) / Menos ${t.underOdds} (${t.underImplied}%)`)
+      }
+      if (parts.length) {
+        lines.push(`Cuotas Totals: ${parts.join(' | ')}`)
+      }
+    }
   } else {
     lines.push('Cuotas: no disponibles')
   }

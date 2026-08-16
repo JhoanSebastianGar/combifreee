@@ -59,39 +59,86 @@ function pickBestBookmaker(bookmakers) {
 }
 
 /**
- * Extrae cuotas 1X2 del mercado h2h de una casa de apuestas.
- * Devuelve { homeOdds, drawOdds, awayOdds, homeImplied, drawImplied, awayImplied, overround }
+ * Extrae cuotas 1X2 y Totals (Más/Menos goles) de una casa de apuestas.
+ * Devuelve { homeOdds, drawOdds, awayOdds, ..., totals: { line25, line15 } }
  * o null si no hay datos suficientes.
  */
 function extractOdds(bookmaker, homeTeam, awayTeam) {
-  const h2h = bookmaker?.markets?.find(m => m.key === 'h2h')
-  if (!h2h) return null
+  const markets = bookmaker?.markets ?? []
+  
+  // ── Mercado 1X2 (h2h) ──────────────────────────────────────────────────
+  const h2h = markets.find(m => m.key === 'h2h')
+  let odds1x2 = null
+  
+  if (h2h) {
+    const outcomes = h2h.outcomes ?? []
+    const findPrice = (name) =>
+      outcomes.find(o => o.name === name || (o.name === 'Draw' && name === 'Draw'))?.price
 
-  const outcomes = h2h.outcomes ?? []
+    const o1 = findPrice(homeTeam)
+    const oX = outcomes.find(o => o.name === 'Draw')?.price
+    const o2 = findPrice(awayTeam)
 
-  // La API devuelve los outcomes con el nombre del equipo como key
-  // El empate viene como "Draw"
-  const findPrice = (name) =>
-    outcomes.find(o => o.name === name || o.name === 'Draw' && name === 'Draw')?.price
+    if (o1 && oX && o2) {
+      const raw1 = 1 / o1, rawX = 1 / oX, raw2 = 1 / o2
+      const total = raw1 + rawX + raw2
 
-  const o1 = findPrice(homeTeam)
-  const oX = outcomes.find(o => o.name === 'Draw')?.price
-  const o2 = findPrice(awayTeam)
+      odds1x2 = {
+        homeOdds:    parseFloat(o1.toFixed(3)),
+        drawOdds:    parseFloat(oX.toFixed(3)),
+        awayOdds:    parseFloat(o2.toFixed(3)),
+        homeImplied: parseFloat(((raw1 / total) * 100).toFixed(1)),
+        drawImplied: parseFloat(((rawX / total) * 100).toFixed(1)),
+        awayImplied: parseFloat(((raw2 / total) * 100).toFixed(1)),
+        overround:   parseFloat(((total - 1) * 100).toFixed(2)),
+        bookmaker:   bookmaker.title,
+      }
+    }
+  }
 
-  if (!o1 || !oX || !o2) return null
+  // ── Mercado Totals (Más/Menos goles) ───────────────────────────────────
+  // The Odds API usa key "totals" con outcomes como "Over 2.5" / "Under 2.5"
+  const totalsMarket = markets.find(m => m.key === 'totals')
+  let totals = null
+  
+  if (totalsMarket) {
+    const outcomes = totalsMarket.outcomes ?? []
+    
+    const extractLine = (line) => {
+      const over = outcomes.find(o => o.name === `Over ${line}` && o.point === line)
+      const under = outcomes.find(o => o.name === `Under ${line}` && o.point === line)
+      
+      if (!over || !under) return null
+      
+      const oOver = over.price
+      const oUnder = under.price
+      const rawOver = 1 / oOver, rawUnder = 1 / oUnder
+      const totalProb = rawOver + rawUnder
+      
+      return {
+        line:          parseFloat(line),
+        overOdds:      parseFloat(oOver.toFixed(3)),
+        underOdds:     parseFloat(oUnder.toFixed(3)),
+        overImplied:   parseFloat(((rawOver / totalProb) * 100).toFixed(1)),
+        underImplied:  parseFloat(((rawUnder / totalProb) * 100).toFixed(1)),
+        overround:     parseFloat(((totalProb - 1) * 100).toFixed(2)),
+      }
+    }
 
-  const raw1 = 1 / o1, rawX = 1 / oX, raw2 = 1 / o2
-  const total = raw1 + rawX + raw2
+    const line25 = extractLine(2.5)
+    const line15 = extractLine(1.5)
+    
+    if (line25 || line15) {
+      totals = { line25, line15 }
+    }
+  }
 
+  // Devolver null solo si no hay ningún mercado
+  if (!odds1x2 && !totals) return null
+  
   return {
-    homeOdds:    parseFloat(o1.toFixed(3)),
-    drawOdds:    parseFloat(oX.toFixed(3)),
-    awayOdds:    parseFloat(o2.toFixed(3)),
-    homeImplied: parseFloat(((raw1 / total) * 100).toFixed(1)),
-    drawImplied: parseFloat(((rawX / total) * 100).toFixed(1)),
-    awayImplied: parseFloat(((raw2 / total) * 100).toFixed(1)),
-    overround:   parseFloat(((total - 1) * 100).toFixed(2)),
-    bookmaker:   bookmaker.title,  // para mostrar la fuente en la UI
+    ...(odds1x2 || {}),
+    totals,
   }
 }
 
@@ -142,7 +189,7 @@ export async function loadMatchesFromOddsApi(apiKey, { limit = 20 } = {}) {
   const params = new URLSearchParams({
     apiKey,
     regions:     'eu',
-    markets:     'h2h',
+    markets:     'h2h,totals',  // Ahora pedimos ambos mercados
     oddsFormat:  'decimal',
     dateFormat:  'iso',
     bookmakers:  BOOKMAKER_PRIORITY.join(','),

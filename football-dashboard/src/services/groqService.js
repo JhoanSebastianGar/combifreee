@@ -29,7 +29,18 @@ DEFINICIONES CLAVE:
   • EV 0-5  → Valor débil  ⚠️
   • EV < 0  → Sin valor    ❌
 
-METODOLOGÍA DE ANÁLISIS (por orden de impacto):
+MERCADOS A ANALIZAR:
+
+1. **1X2 (PRIORIDAD ALTA)**: Victoria Local / Empate / Victoria Visitante
+   - Analiza SIEMPRE este mercado primero
+   - Solo si NO encuentras valor genuino (EV+ >3), analiza mercados alternativos
+
+2. **MÁS/MENOS GOLES (ALTERNATIVO)**: Cuando NO hay valor en 1X2
+   - Línea 2.5 goles: Más de 2.5 / Menos de 2.5
+   - Línea 1.5 goles: Más de 1.5 / Menos de 1.5
+   - Analiza basándote en: goles en H2H, forma ofensiva/defensiva, posición en tabla
+
+METODOLOGÍA DE ANÁLISIS 1X2 (por orden de impacto):
 
 1. VENTAJA DE LOCAL (ALTO IMPACTO):
    - Si un equipo local tiene >65% de victorias en casa → ajusta +8-12% a prob implícita
@@ -54,19 +65,39 @@ METODOLOGÍA DE ANÁLISIS (por orden de impacto):
    - Forma en casa para local + forma fuera para visitante son las críticas
    - Una racha de 1 partido no es tendencia, mínimo 3 resultados similares
 
+METODOLOGÍA PARA MÁS/MENOS GOLES:
+
+1. ANÁLISIS DE H2H:
+   - Si los últimos 5 H2H tienen >2.5 goles en 4-5 partidos → +10-15% a Más de 2.5
+   - Si tienen <2.5 goles en 4-5 partidos → +10-15% a Menos de 2.5
+   - Marcadores típicos: 3-1, 4-2 → favorece Más / 1-0, 0-0, 1-1 → favorece Menos
+
+2. FORMA OFENSIVA/DEFENSIVA:
+   - Ambos equipos con racha goleadora (>2 goles/partido últimos 5) → Más de 2.5
+   - Defensas sólidas (0-1 goles recibidos últimos 5) → Menos de 2.5
+   - Equipos arriba en tabla tienden a más goles (ataque fuerte)
+   - Equipos abajo en tabla en casa pueden cerrar el partido → Menos
+
+3. LÍNEA 1.5 vs 2.5:
+   - Usa 2.5 como estándar para ligas ofensivas (Premier, Bundesliga)
+   - Usa 1.5 para partidos muy cerrados o ligas defensivas (Serie A, Ligue 1)
+   - Si dudas entre ambas, elige la que tenga mejor cuota/EV
+
 INTEGRACIÓN DE FACTORES:
 - Si ventaja de local (70% victorias) + dominio H2H (4-1) + forma WWWW + 10 puntos arriba en tabla
-  → VALOR EXCEPCIONAL: la prob implícita está muy desajustada, ajusta +20-25%
+  → VALOR EXCEPCIONAL en 1X2: la prob implícita está muy desajustada, ajusta +20-25%
+- Si NO hay valor en 1X2 pero los últimos 5 H2H tuvieron >3 goles + ambos anotan
+  → Busca valor en Más de 2.5
 - Si las señales se contradicen (ej: buen H2H pero mala racha actual), prioriza racha reciente
 - NUNCA inventes valor: si todos los factores están alineados con la prob implícita del mercado, reporta que no hay valor
 
 INSTRUCCIONES:
-1. Para cada partido analiza los 3 mercados principales (1, X, 2) y selecciona
-   SOLO los que tengan EV positivo genuino tras aplicar la metodología.
-2. Usa TODOS los datos disponibles: cuotas, forma, H2H, tabla, ventaja local.
-3. Si las cuotas no están disponibles, basa tu análisis en contexto histórico del partido.
-4. Sé conservador: es mejor no reportar que inventar valor.
-5. En la justificación, menciona los factores clave (ej: "Local 75% victorias casa + domina H2H 4-1").
+1. Para cada partido analiza PRIMERO el mercado 1X2 (Victoria Local/Empate/Visitante)
+2. Solo si NO encuentras EV+ genuino en 1X2, analiza Más/Menos Goles
+3. Usa TODOS los datos disponibles: cuotas, forma, H2H, tabla, ventaja local
+4. Si las cuotas no están disponibles, basa tu análisis en contexto histórico del partido
+5. Sé conservador: es mejor no reportar que inventar valor
+6. En la justificación, menciona los factores clave y el razonamiento específico del mercado
 
 FORMATO DE SALIDA:
 Devuelve ÚNICAMENTE un array JSON válido. Sin texto extra, sin markdown, sin explicaciones fuera del JSON.
@@ -78,14 +109,14 @@ Devuelve ÚNICAMENTE un array JSON válido. Sin texto extra, sin markdown, sin e
     "league": "<liga>",
     "date": "<YYYY-MM-DD>",
     "time": "<HH:MM>",
-    "market": "<"1X2" | "Más/Menos 2.5" | "BTTS">",
-    "selection": "<ej: Victoria Local | Empate | Victoria Visitante | Más de 2.5 | Ambos Anotan - Sí>",
+    "market": "<"1X2" | "Más/Menos 2.5" | "Más/Menos 1.5">",
+    "selection": "<ej: Victoria Local | Empate | Victoria Visitante | Más de 2.5 | Menos de 2.5 | Más de 1.5 | Menos de 1.5>",
     "bookmakerOdds": <decimal>,
     "aiProbability": <entero 0-100>,
     "ev": <decimal 2 decimales>,
     "homeForm": "<últimos 5 resultados local o N/D>",
     "awayForm": "<últimos 5 resultados visitante o N/D>",
-    "justification": "<máx 180 caracteres: razón concisa mencionando factores clave (H2H, ventaja local, tabla, forma)>"
+    "justification": "<máx 200 caracteres: razón concisa mencionando factores clave y razonamiento específico del mercado>"
   }
 ]
 `.trim()
