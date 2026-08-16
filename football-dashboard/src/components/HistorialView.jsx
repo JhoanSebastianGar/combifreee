@@ -34,6 +34,14 @@ function formatDate(iso) {
   return `${d}/${m}/${y}`
 }
 
+function entryTimestamp(entry) {
+  const dateTime = `${entry.date ?? ''}T${entry.time || '00:00'}`
+  const timestamp = new Date(dateTime).getTime()
+
+  // Las entradas antiguas sin fecha se ordenan por el momento en que se guardaron.
+  return Number.isNaN(timestamp) ? new Date(entry.savedAt ?? 0).getTime() : timestamp
+}
+
 // ─── Gráfico de barras simple (últimas 20 apuestas) ──────────────────────────
 
 function PLChart({ entries }) {
@@ -120,10 +128,16 @@ export default function HistorialView({
 }) {
   const [filterStatus, setFilterStatus] = useState('Todos')
   const [confirmClear, setConfirmClear] = useState(false)
+  const [dateOrder, setDateOrder] = useState('desc')
 
   const filtered = filterStatus === 'Todos'
     ? entries
     : entries.filter(e => e.status === filterStatus)
+
+  const sortedEntries = [...filtered].sort((a, b) => {
+    const difference = entryTimestamp(b) - entryTimestamp(a)
+    return dateOrder === 'desc' ? difference : -difference
+  })
 
   const { pl, yield: yld, winRate, total, won, lost, pending, voided, staked } = metrics
 
@@ -228,7 +242,7 @@ export default function HistorialView({
         </div>
 
         {/* Tabla */}
-        {filtered.length === 0 ? (
+        {sortedEntries.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
             <span className="text-4xl">📭</span>
             <p className="text-white font-semibold">Sin apuestas guardadas</p>
@@ -241,7 +255,18 @@ export default function HistorialView({
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-pitch-800 border-b border-pitch-700">
-                  {['Fecha', 'Partido', 'Mercado / Selección', 'Cuota', 'Stake', 'P/L', 'Estado', ''].map(h => (
+                  <th className="table-cell-base text-pitch-600 font-medium text-xs uppercase tracking-widest">
+                    <button
+                      type="button"
+                      onClick={() => setDateOrder(order => order === 'desc' ? 'asc' : 'desc')}
+                      className="inline-flex items-center gap-1 hover:text-white transition-colors"
+                      title={dateOrder === 'desc' ? 'Ordenando de más reciente a más antigua' : 'Ordenando de más antigua a más reciente'}
+                      aria-label="Cambiar el orden por fecha"
+                    >
+                      Fecha <span aria-hidden="true">{dateOrder === 'desc' ? '↓' : '↑'}</span>
+                    </button>
+                  </th>
+                  {['Partido', 'Mercado / Selección', 'Cuota', 'Stake', 'P/L', 'Estado', ''].map(h => (
                     <th key={h} className="table-cell-base text-pitch-600 font-medium text-xs uppercase tracking-widest">
                       {h}
                     </th>
@@ -249,7 +274,7 @@ export default function HistorialView({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(entry => {
+                {sortedEntries.map(entry => {
                   const entryPL =
                     entry.status === 'Ganada'  ? (entry.odds - 1) * entry.stake :
                     entry.status === 'Perdida' ? -entry.stake :
