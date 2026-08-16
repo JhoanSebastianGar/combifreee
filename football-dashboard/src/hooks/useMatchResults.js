@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { findMultipleResults } from '../services/espnService.js'
+import { fetchMultipleResults } from '../services/sofascoreService.js'
 
 const POLLING_INTERVAL_MS = 30_000  // 30 segundos
 
@@ -19,9 +20,12 @@ const POLLING_INTERVAL_MS = 30_000  // 30 segundos
 function detectSportKey(leagueName) {
   const ln = leagueName.toLowerCase()
   
+  if (ln.includes('premier league') && (ln.includes('russia') || ln.includes('rusia'))) return 'soccer_russia_premier_league'
   if (ln.includes('premier') || ln.includes('england') || ln.includes('epl')) return 'soccer_epl'
   if (ln.includes('la liga') || ln.includes('spain') || ln.includes('españa')) return 'soccer_spain_la_liga'
+  if (ln.includes('bundesliga 2') || ln.includes('2. bundesliga')) return 'soccer_germany_bundesliga2'
   if (ln.includes('bundesliga') || ln.includes('germany') || ln.includes('alemania')) return 'soccer_germany_bundesliga'
+  if (ln.includes('coppa italia')) return 'soccer_italy_coppa_italia'
   if (ln.includes('serie a') || ln.includes('italy') || ln.includes('italia')) return 'soccer_italy_serie_a'
   if (ln.includes('ligue 1') || ln.includes('france') || ln.includes('francia')) return 'soccer_france_ligue_one'
   if (ln.includes('eredivisie') || ln.includes('netherlands') || ln.includes('holanda')) return 'soccer_netherlands_eredivisie'
@@ -30,7 +34,8 @@ function detectSportKey(leagueName) {
   if (ln.includes('brasileir') || ln.includes('brazil') || ln.includes('brasil')) return 'soccer_brazil_campeonato'
   if (ln.includes('argentina') || ln.includes('primera division')) return 'soccer_argentina_primera_division'
   if (ln.includes('primeira liga') || ln.includes('portugal')) return 'soccer_portugal_primeira_liga'
-  if (ln.includes('super lig') || ln.includes('turkey') || ln.includes('turquía')) return 'soccer_turkey_super_league'
+  if (ln.includes('super lig') || ln.includes('super league') || ln.includes('turkey') || ln.includes('turquía')) return 'soccer_turkey_super_league'
+  if (ln.includes('k league 1') || ln.includes('k-league 1') || ln.includes('south korea') || ln.includes('corea')) return 'soccer_korea_kleague1'
   if (ln.includes('champions league') || ln.includes('uefa champions')) return 'soccer_uefa_champs_league'
   if (ln.includes('europa league') || ln.includes('uefa europa')) return 'soccer_uefa_europa_league'
   
@@ -84,6 +89,7 @@ export function useMatchResults(pendingEntries, onResultUpdate) {
             homeTeam: home?.trim() || '',
             awayTeam: away?.trim() || '',
             date: entry.date,
+            matchId: entry.matchId,
             sportKey: sportKey || 'soccer_epl',  // fallback a Premier League
             entryId: entry.id,
             league: entry.league,
@@ -103,16 +109,28 @@ export function useMatchResults(pendingEntries, onResultUpdate) {
           console.debug(`[Match Results] → "${m.homeTeam} vs ${m.awayTeam}" en ${m.sportKey} (${m.league || 'sin liga'})`)
         })
 
-        // Buscar resultados en ESPN
-        const results = await findMultipleResults(matchesToFind)
+        // Sofascore cubre también ligas que ESPN no publica, como K League 1.
+        // Las entradas guardadas desde Sofascore ya incluyen su ID de evento.
+        const sofascoreIds = matchesToFind
+          .map(m => Number(m.matchId))
+          .filter(Number.isFinite)
+        const sofascoreResults = sofascoreIds.length
+          ? await fetchMultipleResults(sofascoreIds)
+          : new Map()
 
-        if (results.size > 0) {
-          console.info(`[Match Results] ${results.size} partidos finalizados`)
+        // ESPN es el respaldo para entradas sin resultado disponible en Sofascore.
+        const espnMatches = matchesToFind.filter(m => !sofascoreResults.has(Number(m.matchId)))
+        const espnResults = espnMatches.length
+          ? await findMultipleResults(espnMatches)
+          : new Map()
+
+        if (sofascoreResults.size > 0 || espnResults.size > 0) {
+          console.info(`[Match Results] ${sofascoreResults.size + espnResults.size} partidos finalizados`)
 
           // Actualizar cada entrada que tenga resultado
           for (const matchData of matchesToFind) {
             const key = `${matchData.homeTeam}|${matchData.awayTeam}`
-            const result = results.get(key)
+            const result = sofascoreResults.get(Number(matchData.matchId)) ?? espnResults.get(key)
 
             if (result) {
               const entry = pendingEntries.find(e => e.id === matchData.entryId)

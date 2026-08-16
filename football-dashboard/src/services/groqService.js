@@ -8,6 +8,7 @@ import { formatMatchForPrompt } from './sofascoreService.js'
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
 const MODEL        = 'llama-3.3-70b-versatile'
+export const MINIMUM_ODDS = 1.5
 
 // ─── Prompt ──────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,7 @@ INSTRUCCIONES:
 4. Si las cuotas no están disponibles, basa tu análisis en contexto histórico del partido
 5. Sé conservador: es mejor no reportar que inventar valor
 6. En la justificación, menciona los factores clave y el razonamiento específico del mercado
+7. NUNCA incluyas un pronóstico con cuota inferior a 1.50. Si no hay una selección de 1.50 o superior con valor, no incluyas ese partido.
 
 FORMATO DE SALIDA:
 Devuelve ÚNICAMENTE un array JSON válido. Sin texto extra, sin markdown, sin explicaciones fuera del JSON.
@@ -184,11 +186,15 @@ export async function analyzeMatches(apiKey, matches) {
 
   const parsed = JSON.parse(jsonMatch[0])
 
-  // Re-calcular EV en cliente para garantizar consistencia matemática
-  return parsed.map(item => ({
-    ...item,
-    ev: parseFloat(
-      ((item.aiProbability / 100) * item.bookmakerOdds * 100 - 100).toFixed(2)
-    ),
-  }))
+  // Re-calcular EV y exigir la cuota mínima en cliente para que la regla no
+  // dependa únicamente de que el modelo siga el prompt.
+  return parsed
+    .map(item => ({
+      ...item,
+      bookmakerOdds: Number(item.bookmakerOdds),
+      ev: parseFloat(
+        ((item.aiProbability / 100) * item.bookmakerOdds * 100 - 100).toFixed(2)
+      ),
+    }))
+    .filter(item => Number.isFinite(item.bookmakerOdds) && item.bookmakerOdds >= MINIMUM_ODDS)
 }

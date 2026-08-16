@@ -120,7 +120,6 @@ export default function App() {
               onClick={() => setTab('historial')}
               icon="📈"
               label="Historial & Rentabilidad"
-              badge={entries.length || null}
             />
           </nav>
 
