@@ -15,7 +15,10 @@ Dashboard de **value betting** para fútbol con análisis de IA basado en **dato
 - ✅ **Home Advantage** (% victorias en casa) con API-Football
 - ✅ **Análisis de IA** con Groq (llama-3.3-70b-versatile)
 - ✅ **Cálculo de EV+** (Expected Value) automático
+- ✅ **Cuota mínima de 1.50**: se descartan automáticamente pronósticos con cuotas inferiores
 - ✅ **Historial & Rentabilidad** con métricas (P/L, Yield, Win Rate)
+- ✅ **Resultados automáticos** cada 30 segundos para apuestas pendientes
+- ✅ **Orden por fecha** en el historial (más reciente primero, conmutables desde el encabezado)
 - ✅ **Persistencia** en localStorage
 - ✅ **Dark Mode** deportivo
 - ✅ **Fallback robusto** (3 capas: Sofascore → Odds API → Mock)
@@ -42,17 +45,21 @@ npm run dev
 
 ---
 
-## 🔑 API Keys Requeridas
+## 🔑 Configuración de API keys
 
-### **Obligatoria**:
-- **Groq API Key**: [https://console.groq.com/keys](https://console.groq.com/keys)
-  - Añadir en `.env`: `VITE_GROQ_API_KEY=tu_key_aquí`
+Ninguna clave se incluye en el repositorio. Copia `.env.example` a `.env` y añade tus propias credenciales:
 
-### **Incluidas** (ya configuradas):
-- **The Odds API**: `5af72f93d1358d5ec2e19d93a93ff1bb` (fallback)
-  - Plan Free: 500 requests/mes
-- **API-Football**: `6351441914dbce582c490cc752ca08df` (datos avanzados)
-  - Plan Free: 100 requests/día
+```env
+VITE_GROQ_API_KEY=tu_clave_de_groq
+VITE_ODDS_API_KEY=tu_clave_de_the_odds_api
+VITE_APIFOOTBALL_API_KEY=tu_clave_de_api_football
+```
+
+- **Groq** es necesaria para generar el análisis.
+- **The Odds API** es el respaldo cuando Sofascore no está disponible (plan gratuito: 500 solicitudes/mes).
+- **API-Football** añade H2H, clasificación y ventaja de local (plan gratuito: 100 solicitudes/día).
+
+No publiques el archivo `.env` ni pegues claves en el README, issues o commits.
 
 ---
 
@@ -72,6 +79,9 @@ npm run dev
    ↓ (análisis con metodología avanzada)
    
 5. ✨ Oportunidades EV+ con justificación enriquecida
+   ↓ (solo cuotas ≥ 1.50)
+
+6. Historial y actualización automática de resultados
 ```
 
 ---
@@ -118,7 +128,8 @@ football-dashboard/
 │   │   ├── espnService.js          # ESPN (forma)
 │   │   └── groqService.js          # Groq IA
 │   ├── hooks/
-│   │   └── useHistorial.js  # Gestión de historial
+│   │   ├── useHistorial.js     # Gestión de historial
+│   │   └── useMatchResults.js  # Polling y actualización de resultados
 │   ├── data/
 │   │   └── mockMatches.json # Datos de fallback
 │   ├── App.jsx              # Componente principal
@@ -185,6 +196,9 @@ accent-red    → #ff4757  (pérdidas)
 - **Estados**: Pendiente, Ganada, Perdida, Anulada
 - **Stake editable**: 1 unidad por defecto
 - **Gráfico P/L**: Últimas 20 apuestas resueltas
+- **Orden de fecha**: más reciente primero; pulsa “Fecha” para invertirlo
+- **Actualización automática**: consulta cada 30 segundos las apuestas pendientes
+- **Cobertura de resultados**: Sofascore para eventos con ID guardado (incluida K League 1) y ESPN como respaldo para Bundesliga 2, Premier League de Rusia, Super League de Turquía y Coppa Italia, entre otras
 - **Persistencia**: localStorage (`fvf_historial_v1`)
 
 ---
