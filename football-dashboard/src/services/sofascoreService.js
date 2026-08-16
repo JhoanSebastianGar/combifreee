@@ -309,8 +309,92 @@ export async function loadMatchesForDate(date, { limit = MAX_EVENTS, oddsApiKey,
 }
 
 /**
- * Formatea un EnrichedMatch para el prompt de Groq.
+ * Busca un partido en Sofascore por nombres de equipos y fecha.
+ * Útil para obtener el ID de Sofascore de partidos que vienen de otras fuentes.
+ * 
+ * @param {string} homeTeam
+ * @param {string} awayTeam  
+ * @param {string} date - YYYY-MM-DD
+ * @returns {Promise<number|null>} - ID del evento o null
  */
+export async function findMatchIdByTeams(homeTeam, awayTeam, date) {
+  try {
+    const events = await fetchScheduledEvents(date)
+    
+    // Normalizar nombres para matching
+    const normalize = (name) => name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim()
+    const homeN = normalize(homeTeam)
+    const awayN = normalize(awayTeam)
+    
+    // Buscar partido que matchee ambos equipos
+    for (const event of events) {
+      const eHomeN = normalize(event.homeTeam?.name ?? '')
+      const eAwayN = normalize(event.awayTeam?.name ?? '')
+      
+      // Match exacto o contenido
+      if ((eHomeN.includes(homeN) || homeN.includes(eHomeN)) &&
+          (eAwayN.includes(awayN) || awayN.includes(eAwayN))) {
+        return event.id
+      }
+    }
+    
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Obtiene el resultado final de un partido desde Sofascore.
+ * Devuelve null si el partido aún no termina o no se encuentra.
+ * 
+ * @param {number} eventId - ID del evento en Sofascore
+ * @returns {Promise<{status: string, homeScore: number, awayScore: number, winner: 'home'|'away'|'draw'}|null>}
+ */
+export async function fetchMatchResult(eventId) {
+  try {
+    const data = await safeFetch(`${BASE}/event/${eventId}`)
+    const event = data?.event
+    if (!event) return null
+
+    const status = event.status?.type ?? 'notstarted'
+    const homeScore = event.homeScore?.current
+    const awayScore = event.awayScore?.current
+
+    // Solo devolver resultado si el partido terminó
+    if (status !== 'finished') return null
+    if (homeScore == null || awayScore == null) return null
+
+    let winner = 'draw'
+    if (homeScore > awayScore) winner = 'home'
+    else if (awayScore > homeScore) winner = 'away'
+
+    return {
+      status: 'finished',
+      homeScore,
+      awayScore,
+      winner,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Obtiene resultados de múltiples partidos en paralelo.
+ * 
+ * @param {number[]} eventIds - Array de IDs de eventos
+ * @returns {Promise<Map<number, MatchResult>>}
+ */
+export async function fetchMultipleResults(eventIds) {
+  const results = await Promise.all(
+    eventIds.map(async (id) => {
+      const result = await fetchMatchResult(id)
+      return [id, result]
+    })
+  )
+  return new Map(results.filter(([, result]) => result !== null))
+}
 export function formatMatchForPrompt(match) {
   const lines = [
     `ID:${match.id} | ${match.home} vs ${match.away}`,

@@ -4,11 +4,12 @@
  *
  * Gratuita, sin autenticación, sin rate-limit conocido.
  * Endpoints usados:
- *   /scoreboard  → lista de partidos + campo `form` por equipo (WLWWW)
+ *   /scoreboard  → lista de partidos + campo `form` por equipo (WLWWW) + resultados finales
  *   /summary     → lastFiveGames con detalle de cada partido
  *
- * Se usa para enriquecer los matches de The Odds API con forma real
- * cuando Sofascore no está disponible.
+ * Se usa para:
+ *   1. Enriquecer matches de The Odds API con forma real
+ *   2. Obtener resultados finales de partidos para actualización automática
  */
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
@@ -155,7 +156,15 @@ function normalizeName(name) {
     .toLowerCase()
     .normalize('NFD')                          // descompone ã → a + ̃
     .replace(/[\u0300-\u036f]/g, '')           // elimina los combining diacritics
-    .replace(/\b(fc|cf|sc|ac|as|rb|sv|vfb|bv|fk|sk|afc|bsc|1\.|ssv|fsv|tsv|vfl)\b/g, '')
+    // Casos especiales holandeses
+    .replace(/\bado den haag\b/g, 'den haag')   // ADO Den Haag → den haag
+    .replace(/\bfc den haag\b/g, 'den haag')
+    .replace(/\bfc groningen\b/g, 'groningen')
+    .replace(/\bpsv eindhoven\b/g, 'eindhoven psv')
+    .replace(/\bajax amsterdam\b/g, 'ajax')
+    .replace(/\baz alkmaar\b/g, 'alkmaar')
+    // Prefijos genéricos
+    .replace(/\b(fc|cf|sc|ac|as|rb|sv|vfb|bv|fk|sk|afc|bsc|ssv|fsv|tsv|vfl|ado)\b/g, '')
     .replace(/[^a-z0-9\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -194,19 +203,25 @@ function findInFormMap(formMap, homeName, awayName) {
   let bestVal   = null
 
   for (const [key, val] of formMap) {
-    const [kHome, kAway] = key.split('|').map(k => normalizeName(
-      // key ya está en lowercase pero puede tener diacríticos del displayName de ESPN
-      k
-    ))
+    const [kHome, kAway] = key.split('|')
+    const kHomeN = normalizeName(kHome)
+    const kAwayN = normalizeName(kAway)
 
-    const sHome = similarity(homeN, kHome)
-    const sAway = similarity(awayN, kAway)
+    const sHome = similarity(homeN, kHomeN)
+    const sAway = similarity(awayN, kAwayN)
     const score = sHome * sAway   // ambos deben matchear
 
     if (score > bestScore && score >= 0.4) {
       bestScore = score
       bestVal   = val
     }
+  }
+
+  // Debug: si no se encontró, loguear para investigar
+  if (!bestVal) {
+    console.debug(
+      `[ESPN] No match: "${homeName}" vs "${awayName}" (normalized: "${homeN}" vs "${awayN}")`
+    )
   }
 
   return bestVal
@@ -246,6 +261,12 @@ export async function enrichMatchesWithESPNForm(matches, { detailed = false } = 
         const map = await fetchFormFromScoreboard(slug)
         formMaps.set(slug, map)
         console.info(`[ESPN] ${slug}: ${map.size} partidos con forma ✓`)
+        
+        // Debug: mostrar equipos disponibles para Eredivisie
+        if (slug === 'ned.1' && map.size > 0) {
+          const teams = [...map.keys()].map(k => k.split('|').join(' vs '))
+          console.debug(`[ESPN] Eredivisie partidos disponibles:`, teams.slice(0, 5))
+        }
       } catch (err) {
         console.warn(`[ESPN] No se pudo obtener scoreboard de ${slug}:`, err.message)
         formMaps.set(slug, new Map())
@@ -259,10 +280,23 @@ export async function enrichMatchesWithESPNForm(matches, { detailed = false } = 
       const slug    = ODDS_TO_ESPN[match.sportKey]
       const formMap = slug ? formMaps.get(slug) : null
 
-      if (!formMap) return match  // liga no cubierta por ESPN
+      if (!formMap) {
+        console.debug(`[ESPN] Liga no cubierta: ${match.sportKey} → ${match.league}`)
+        return match  // liga no cubierta por ESPN
+      }
 
       const entry = findInFormMap(formMap, match.home, match.away)
-      if (!entry) return match    // partido no encontrado en scoreboard
+      if (!entry) {
+        // Debug mejorado: mostrar qué equipos están disponibles en la liga
+        if (formMap.size > 0) {
+          const availableTeams = [...formMap.values()].slice(0, 3).map(v => `${v.homeName} vs ${v.awayName}`)
+          console.debug(
+            `[ESPN] No match para "${match.home} vs ${match.away}" en ${slug}. ` +
+            `Ejemplos disponibles: ${availableTeams.join(', ')}`
+          )
+        }
+        return match    // partido no encontrado en scoreboard
+      }
 
       let lastFive = null
       if (detailed && entry.espnEventId) {
@@ -306,4 +340,100 @@ export function getSupportedLeagues() {
     oddsKey,
     espnSlug,
   }))
+}
+
+
+// ─── Búsqueda de resultados finales ───────────────────────────────────────────
+
+/**
+ * Busca el resultado final de un partido en ESPN por nombres de equipos y fecha.
+ * 
+ * @param {string} homeTeam
+ * @param {string} awayTeam
+ * @param {string} date - YYYY-MM-DD
+ * @param {string} sportKey - sport_key de Odds API (ej: 'soccer_usa_mls')
+ * @returns {Promise<{homeScore: number, awayScore: number, winner: 'home'|'away'|'draw', status: string}|null>}
+ */
+export async function findMatchResultByTeams(homeTeam, awayTeam, date, sportKey) {
+  try {
+    const espnSlug = ODDS_TO_ESPN[sportKey]
+    if (!espnSlug) {
+      console.debug(`[ESPN Results] Liga no cubierta: ${sportKey}`)
+      return null
+    }
+
+    const data = await safeFetch(`${ESPN_BASE}/${espnSlug}/scoreboard?dates=${date.replace(/-/g, '')}`)
+    const events = data?.events ?? []
+
+    const homeN = normalizeName(homeTeam)
+    const awayN = normalizeName(awayTeam)
+
+    for (const event of events) {
+      const comp = event.competitions?.[0]
+      const competitors = comp?.competitors ?? []
+      
+      const home = competitors.find(c => c.homeAway === 'home')
+      const away = competitors.find(c => c.homeAway === 'away')
+
+      if (!home || !away) continue
+
+      const eHomeN = normalizeName(home.team?.displayName ?? '')
+      const eAwayN = normalizeName(away.team?.displayName ?? '')
+
+      const sHome = similarity(homeN, eHomeN)
+      const sAway = similarity(awayN, eAwayN)
+      
+      if (sHome >= 0.4 && sAway >= 0.4) {
+        // Match encontrado, verificar si terminó
+        const status = comp.status?.type?.name ?? 'scheduled'
+        
+        if (status === 'STATUS_FINAL' || status === 'STATUS_FULL_TIME') {
+          const homeScore = parseInt(home.score) || 0
+          const awayScore = parseInt(away.score) || 0
+          
+          let winner = 'draw'
+          if (homeScore > awayScore) winner = 'home'
+          else if (awayScore > homeScore) winner = 'away'
+
+          console.info(
+            `[ESPN Results] "${homeTeam} vs ${awayTeam}": ${homeScore}-${awayScore} (${winner})`
+          )
+
+          return {
+            homeScore,
+            awayScore,
+            winner,
+            status: 'finished',
+          }
+        } else {
+          console.debug(`[ESPN Results] "${homeTeam} vs ${awayTeam}": aún en curso (${status})`)
+          return null
+        }
+      }
+    }
+
+    console.debug(`[ESPN Results] "${homeTeam} vs ${awayTeam}": no encontrado en ESPN ${espnSlug}`)
+    return null
+  } catch (err) {
+    console.warn(`[ESPN Results] Error buscando resultado:`, err.message)
+    return null
+  }
+}
+
+/**
+ * Busca resultados de múltiples partidos en ESPN.
+ * 
+ * @param {Array<{homeTeam, awayTeam, date, sportKey}>} matches
+ * @returns {Promise<Map<string, MatchResult>>} - Map keyed by "${homeTeam}|${awayTeam}"
+ */
+export async function findMultipleResults(matches) {
+  const results = await Promise.all(
+    matches.map(async (m) => {
+      const result = await findMatchResultByTeams(m.homeTeam, m.awayTeam, m.date, m.sportKey)
+      const key = `${m.homeTeam}|${m.awayTeam}`
+      return [key, result]
+    })
+  )
+  
+  return new Map(results.filter(([, result]) => result !== null))
 }

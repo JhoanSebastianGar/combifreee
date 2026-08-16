@@ -107,7 +107,17 @@ function PLChart({ entries }) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export default function HistorialView({ entries, metrics, onUpdateStatus, onUpdateStake, onRemove, onClearAll }) {
+export default function HistorialView({ 
+  entries, 
+  metrics, 
+  onUpdateStatus, 
+  onUpdateStake, 
+  onRemove, 
+  onClearAll,
+  isPolling = false,
+  pendingCount = 0,
+  lastUpdate = null,
+}) {
   const [filterStatus, setFilterStatus] = useState('Todos')
   const [confirmClear, setConfirmClear] = useState(false)
 
@@ -119,6 +129,23 @@ export default function HistorialView({ entries, metrics, onUpdateStatus, onUpda
 
   return (
     <div className="space-y-6">
+
+      {/* ── Banner de Polling Activo ── */}
+      {isPolling && pendingCount > 0 && (
+        <div className="flex items-start gap-3 bg-accent-blue/10 border border-accent-blue/25 rounded-xl px-4 py-3">
+          <span className="text-xl">🔄</span>
+          <div className="flex-1">
+            <p className="text-accent-blue font-semibold text-sm">
+              Actualizando resultados automáticamente
+            </p>
+            <p className="text-accent-blue/70 text-xs mt-0.5">
+              Verificando {pendingCount} {pendingCount === 1 ? 'partido pendiente' : 'partidos pendientes'} cada 30 segundos desde ESPN
+              {lastUpdate && ` · Última actualización: ${lastUpdate.toLocaleTimeString('es-ES')}`}
+            </p>
+          </div>
+          <div className="w-2 h-2 rounded-full bg-accent-blue animate-pulse" />
+        </div>
+      )}
 
       {/* ── Métricas ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

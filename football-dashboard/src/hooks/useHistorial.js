@@ -105,6 +105,8 @@ export function useHistorial() {
 
     const entry = {
       id:        uid(),
+      matchId:   opportunity.matchId ?? opportunity.id,  // Guardar ID del partido
+      sportKey:  opportunity.sportKey,  // Para buscar en ESPN
       savedAt:   new Date().toISOString(),
       match:     opportunity.match ?? `${opportunity.home} vs ${opportunity.away}`,
       league:    opportunity.league ?? '',

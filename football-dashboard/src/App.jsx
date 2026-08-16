@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { loadMatchesForDate } from './services/sofascoreService.js'
 import { analyzeMatches }     from './services/groqService.js'
 import { useHistorial }       from './hooks/useHistorial.js'
+import { useMatchResults }    from './hooks/useMatchResults.js'
 import MatchTable             from './components/MatchTable.jsx'
 import HistorialView          from './components/HistorialView.jsx'
 import Spinner                from './components/Spinner.jsx'
@@ -41,6 +42,22 @@ export default function App() {
   const [analysis,         setAnalysis]         = useState(INIT)
 
   const { entries, metrics, addEntry, updateStatus, updateStake, removeEntry, clearAll } = useHistorial()
+
+  // Polling automático de resultados para partidos pendientes
+  const pendingEntries = entries.filter(e => e.status === 'Pendiente')
+  
+  const handleResultUpdate = useCallback((entryId, resultData) => {
+    // Auto-actualizar el estado según el resultado
+    if (resultData.won === true) {
+      updateStatus(entryId, 'Ganada')
+      console.info(`[Auto-Update] ✅ ${entryId} → Ganada (${resultData.homeScore}-${resultData.awayScore})`)
+    } else if (resultData.won === false) {
+      updateStatus(entryId, 'Perdida')
+      console.info(`[Auto-Update] ❌ ${entryId} → Perdida (${resultData.homeScore}-${resultData.awayScore})`)
+    }
+  }, [updateStatus])
+  
+  const { isPolling, lastUpdate } = useMatchResults(pendingEntries, handleResultUpdate)
 
   const isLoading = analysis.phase === 'sofascore' || analysis.phase === 'groq'
 
@@ -133,6 +150,17 @@ export default function App() {
               <span className="text-pitch-600">Yield {metrics.yield.toFixed(1)}%</span>
               <span className="text-pitch-600">·</span>
               <span className="text-pitch-600">{metrics.won}G {metrics.lost}P</span>
+              
+              {/* Indicador de polling activo */}
+              {isPolling && pendingEntries.length > 0 && (
+                <>
+                  <span className="text-pitch-600">·</span>
+                  <span className="flex items-center gap-1.5 text-accent-blue">
+                    <span className="w-1.5 h-1.5 rounded-full bg-accent-blue animate-pulse" />
+                    Actualizando {pendingEntries.length} pendientes
+                  </span>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -329,6 +357,9 @@ export default function App() {
             onUpdateStake={updateStake}
             onRemove={removeEntry}
             onClearAll={clearAll}
+            isPolling={isPolling}
+            pendingCount={pendingEntries.length}
+            lastUpdate={lastUpdate}
           />
         )}
       </main>
