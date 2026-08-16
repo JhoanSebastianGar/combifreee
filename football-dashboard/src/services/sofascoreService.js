@@ -13,6 +13,7 @@
 import mockMatchesData            from '../data/mockMatches.json'
 import { loadMatchesFromOddsApi } from './oddsApiService.js'
 import { enrichWithAPIFootball }  from './apiFootballService.js'
+import { enrichMatchesWithESPNForm } from './espnService.js'
 
 // En desarrollo usamos el proxy de Vite para evitar CORS.
 // En producción habría que configurar un proxy real (Nginx, Cloudflare Worker, etc.)
@@ -196,19 +197,41 @@ async function fetchPregameForm(eventId) {
 function normalizeEvent(event) {
   const dt  = new Date((event.startTimestamp ?? 0) * 1000)
   const pad = (n) => String(n).padStart(2, '0')
+  const league = event.tournament?.name ?? event.season?.name ?? 'Liga desconocida'
+  const country = event.tournament?.category?.name?.toLowerCase() ?? ''
+  const sportKey =
+    country.includes('chile') && /primera divisi[oó]n/i.test(league)
+      ? 'soccer_chile_primera_division'
+      : undefined
+
   return {
     id:           event.id,
     home:         event.homeTeam?.name ?? 'Local',
     away:         event.awayTeam?.name ?? 'Visitante',
     homeId:       event.homeTeam?.id,
     awayId:       event.awayTeam?.id,
-    league:       event.tournament?.name ?? event.season?.name ?? 'Liga desconocida',
+    league,
+    sportKey,
     tournamentId: event.tournament?.uniqueTournament?.id ?? null,
     seasonId:     event.season?.id ?? null,
     date:         `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`,
     time:         `${pad(dt.getHours())}:${pad(dt.getMinutes())}`,
     status:       event.status?.description ?? 'Not started',
   }
+}
+
+/**
+ * Completa con ESPN únicamente los partidos cuya forma no llegó desde Sofascore.
+ * De este modo se conserva la forma más completa de Sofascore cuando existe.
+ */
+async function fillMissingFormsFromESPN(matches) {
+  const missingForm = matches.filter(match => !match.form && match.sportKey)
+  if (!missingForm.length) return matches
+
+  const withEspnForm = await enrichMatchesWithESPNForm(missingForm)
+  const byId = new Map(withEspnForm.map(match => [match.id, match]))
+
+  return matches.map(match => byId.get(match.id) ?? match)
 }
 
 // ─── API pública ──────────────────────────────────────────────────────────────
@@ -263,8 +286,11 @@ export async function loadMatchesForDate(date, { limit = MAX_EVENTS, oddsApiKey,
 
     console.info('[Football Value Finder] Datos obtenidos de Sofascore ✓')
     
+    // Si Sofascore no entregó forma, usar ESPN como respaldo para ligas cubiertas.
+    const matchesWithForm = await fillMissingFormsFromESPN(enriched)
+
     // Enriquecer con API-Football (H2H, standings, home advantage)
-    const finalMatches = await enrichWithAPIFootball(enriched, apiFootballKey)
+    const finalMatches = await enrichWithAPIFootball(matchesWithForm, apiFootballKey)
     return { matches: finalMatches, source: 'sofascore' }
 
   } catch (sofascoreErr) {

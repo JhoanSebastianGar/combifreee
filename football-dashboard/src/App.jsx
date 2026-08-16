@@ -31,6 +31,41 @@ const INIT = {
   lastUpdated: null,
 }
 
+// Groq devuelve el análisis, pero el ID y la liga deben proceder siempre de la
+// fuente de datos original. Así el historial puede volver a consultar el mismo
+// evento cuando finalice, sin depender de que la IA repita esos campos.
+function attachMatchMetadata(opportunities, rawMatches) {
+  const byId = new Map(rawMatches.map(match => [String(match.id), match]))
+  const normalize = (value = '') => value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const byTeams = new Map(rawMatches.map(match => [
+    `${normalize(match.home)}|${normalize(match.away)}`,
+    match,
+  ]))
+
+  return opportunities.map(opportunity => {
+    const [home = '', away = ''] = (opportunity.match ?? '').split(' vs ')
+    const sourceMatch = byId.get(String(opportunity.matchId)) ??
+      byTeams.get(`${normalize(home)}|${normalize(away)}`)
+
+    if (!sourceMatch) return opportunity
+
+    return {
+      ...opportunity,
+      matchId: sourceMatch.id,
+      sportKey: sourceMatch.sportKey,
+      league: sourceMatch.league,
+      date: sourceMatch.date,
+      time: sourceMatch.time,
+      match: `${sourceMatch.home} vs ${sourceMatch.away}`,
+    }
+  })
+}
+
 // ─── componente ──────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -41,7 +76,7 @@ export default function App() {
   const [date,             setDate]             = useState(todayISO())
   const [analysis,         setAnalysis]         = useState(INIT)
 
-  const { entries, metrics, addEntry, updateStatus, updateStake, removeEntry, clearAll } = useHistorial()
+  const { entries, metrics, addEntry, updateStatus, updateStake, updateEntryMetadata, removeEntry, clearAll } = useHistorial()
 
   // Polling automático de resultados para partidos pendientes
   const pendingEntries = entries.filter(e => e.status === 'Pendiente')
@@ -57,7 +92,11 @@ export default function App() {
     }
   }, [updateStatus])
   
-  const { isPolling, lastUpdate } = useMatchResults(pendingEntries, handleResultUpdate)
+  const { isPolling, lastUpdate } = useMatchResults(
+    pendingEntries,
+    handleResultUpdate,
+    updateEntryMetadata,
+  )
 
   const isLoading = analysis.phase === 'sofascore' || analysis.phase === 'groq'
 
@@ -74,7 +113,8 @@ export default function App() {
       })
       setAnalysis(s => ({ ...s, phase: 'groq', rawMatches, source }))
 
-      const opps = await analyzeMatches(groqKey, rawMatches)
+      const analyzedOpps = await analyzeMatches(groqKey, rawMatches)
+      const opps = attachMatchMetadata(analyzedOpps, rawMatches)
       setAnalysis(s => ({ ...s, phase: 'done', opps, lastUpdated: new Date() }))
     } catch (err) {
       setAnalysis(s => ({ ...s, phase: 'error', error: err.message }))
@@ -150,16 +190,7 @@ export default function App() {
               <span className="text-pitch-600">·</span>
               <span className="text-pitch-600">{metrics.won}G {metrics.lost}P</span>
               
-              {/* Indicador de polling activo */}
-              {isPolling && pendingEntries.length > 0 && (
-                <>
-                  <span className="text-pitch-600">·</span>
-                  <span className="flex items-center gap-1.5 text-accent-blue">
-                    <span className="w-1.5 h-1.5 rounded-full bg-accent-blue animate-pulse" />
-                    Actualizando {pendingEntries.length} pendientes
-                  </span>
-                </>
-              )}
+
             </div>
           )}
         </div>

@@ -87,21 +87,26 @@ export function calcMetrics(entries) {
 export function useHistorial() {
   const [entries, setEntries] = useState(() => load())
 
-  const persist = useCallback((next) => {
-    setEntries(next)
-    save(next)
+  // Las actualizaciones del polling pueden llegar juntas. Usar el estado más
+  // reciente evita que una actualización pise el resultado de otra.
+  const persist = useCallback((updater) => {
+    setEntries(current => {
+      const next = typeof updater === 'function' ? updater(current) : updater
+      save(next)
+      return next
+    })
   }, [])
 
   /** Añade una apuesta al historial. Devuelve false si ya existe. */
   const addEntry = useCallback((opportunity) => {
-    const dup = entries.some(
+    const duplicate = entries.some(
       e =>
         e.match     === (opportunity.match ?? `${opportunity.home} vs ${opportunity.away}`) &&
         e.market    === opportunity.market &&
         e.selection === opportunity.selection &&
         e.date      === opportunity.date
     )
-    if (dup) return false
+    if (duplicate) return false
 
     const entry = {
       id:        uid(),
@@ -119,26 +124,31 @@ export function useHistorial() {
       stake:     1,
       status:    'Pendiente',
     }
-    persist([entry, ...entries])
+    persist(current => [entry, ...current])
     return true
   }, [entries, persist])
 
   /** Cambia el estado de una apuesta. */
   const updateStatus = useCallback((id, status) => {
-    persist(entries.map(e => e.id === id ? { ...e, status } : e))
-  }, [entries, persist])
+    persist(current => current.map(e => e.id === id ? { ...e, status } : e))
+  }, [persist])
 
   /** Cambia el stake de una apuesta. */
   const updateStake = useCallback((id, stake) => {
     const val = parseFloat(stake)
     if (isNaN(val) || val <= 0) return
-    persist(entries.map(e => e.id === id ? { ...e, stake: val } : e))
-  }, [entries, persist])
+    persist(current => current.map(e => e.id === id ? { ...e, stake: val } : e))
+  }, [persist])
+
+  /** Completa datos de identificación de entradas antiguas sin alterar su estado. */
+  const updateEntryMetadata = useCallback((id, metadata) => {
+    persist(current => current.map(e => e.id === id ? { ...e, ...metadata } : e))
+  }, [persist])
 
   /** Elimina una apuesta del historial. */
   const removeEntry = useCallback((id) => {
-    persist(entries.filter(e => e.id !== id))
-  }, [entries, persist])
+    persist(current => current.filter(e => e.id !== id))
+  }, [persist])
 
   /** Borra todo el historial. */
   const clearAll = useCallback(() => {
@@ -151,6 +161,7 @@ export function useHistorial() {
     addEntry,
     updateStatus,
     updateStake,
+    updateEntryMetadata,
     removeEntry,
     clearAll,
   }

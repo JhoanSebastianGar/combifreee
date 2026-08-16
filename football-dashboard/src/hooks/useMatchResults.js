@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { findMultipleResults } from '../services/espnService.js'
-import { fetchMultipleResults } from '../services/sofascoreService.js'
+import { fetchMultipleResults, findMatchIdByTeams } from '../services/sofascoreService.js'
 
 const POLLING_INTERVAL_MS = 30_000  // 30 segundos
 
@@ -18,26 +18,38 @@ const POLLING_INTERVAL_MS = 30_000  // 30 segundos
  * Intenta detectar el sportKey basándose en el nombre de la liga.
  */
 function detectSportKey(leagueName) {
-  const ln = leagueName.toLowerCase()
-  
-  if (ln.includes('premier league') && (ln.includes('russia') || ln.includes('rusia'))) return 'soccer_russia_premier_league'
-  if (ln.includes('premier') || ln.includes('england') || ln.includes('epl')) return 'soccer_epl'
-  if (ln.includes('la liga') || ln.includes('spain') || ln.includes('españa')) return 'soccer_spain_la_liga'
-  if (ln.includes('bundesliga 2') || ln.includes('2. bundesliga')) return 'soccer_germany_bundesliga2'
-  if (ln.includes('bundesliga') || ln.includes('germany') || ln.includes('alemania')) return 'soccer_germany_bundesliga'
-  if (ln.includes('coppa italia')) return 'soccer_italy_coppa_italia'
-  if (ln.includes('serie a') || ln.includes('italy') || ln.includes('italia')) return 'soccer_italy_serie_a'
-  if (ln.includes('ligue 1') || ln.includes('france') || ln.includes('francia')) return 'soccer_france_ligue_one'
-  if (ln.includes('eredivisie') || ln.includes('netherlands') || ln.includes('holanda')) return 'soccer_netherlands_eredivisie'
-  if (ln.includes('liga mx') || ln.includes('mexico') || ln.includes('méxico')) return 'soccer_mexico_ligamx'
-  if (ln.includes('mls') || ln.includes('major league soccer')) return 'soccer_usa_mls'
-  if (ln.includes('brasileir') || ln.includes('brazil') || ln.includes('brasil')) return 'soccer_brazil_campeonato'
-  if (ln.includes('argentina') || ln.includes('primera division')) return 'soccer_argentina_primera_division'
-  if (ln.includes('primeira liga') || ln.includes('portugal')) return 'soccer_portugal_primeira_liga'
-  if (ln.includes('super lig') || ln.includes('super league') || ln.includes('turkey') || ln.includes('turquía')) return 'soccer_turkey_super_league'
-  if (ln.includes('k league 1') || ln.includes('k-league 1') || ln.includes('south korea') || ln.includes('corea')) return 'soccer_korea_kleague1'
-  if (ln.includes('champions league') || ln.includes('uefa champions')) return 'soccer_uefa_champs_league'
-  if (ln.includes('europa league') || ln.includes('uefa europa')) return 'soccer_uefa_europa_league'
+  if (!leagueName) return null
+  // Normalizar (quita acentos y compacta)
+  const normalized = leagueName
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  // Mapeos específicos
+  if (normalized.includes('premier league') && (normalized.includes('russia') || normalized.includes('rusia'))) return 'soccer_russia_premier_league'
+  if (normalized.includes('premier') || normalized.includes('england') || normalized.includes('epl')) return 'soccer_epl'
+  if (normalized.includes('la liga') || normalized.includes('spain') || normalized.includes('espana')) return 'soccer_spain_la_liga'
+  if (normalized.includes('bundesliga 2') || normalized.includes('2. bundesliga')) return 'soccer_germany_bundesliga2'
+  if (normalized.includes('bundesliga') || normalized.includes('germany') || normalized.includes('alemania')) return 'soccer_germany_bundesliga'
+  if (normalized.includes('coppa italia')) return 'soccer_italy_coppa_italia'
+  if (normalized.includes('serie a') || normalized.includes('italy') || normalized.includes('italia')) return 'soccer_italy_serie_a'
+  if (normalized.includes('ligue 1') || normalized.includes('france') || normalized.includes('francia')) return 'soccer_france_ligue_one'
+  if (normalized.includes('eredivisie') || normalized.includes('netherlands') || normalized.includes('holanda')) return 'soccer_netherlands_eredivisie' // fallback normalized key
+  if (normalized.includes('liga mx') || normalized.includes('mexico') || normalized.includes('mexico')) return 'soccer_mexico_ligamx'
+  if (normalized.includes('mls') || normalized.includes('major league soccer')) return 'soccer_usa_mls'
+  if (normalized.includes('brasileir') || normalized.includes('brazil') || normalized.includes('brasil')) return 'soccer_brazil_campeonato'
+
+  // Primera División por país: buscar país explícito para evitar mapas incorrectos
+  if (normalized.includes('chile') || (normalized.includes('primera division') && normalized.includes('chile'))) return 'soccer_chile_primera_division'
+  if (normalized.includes('argentina') || (normalized.includes('primera division') && normalized.includes('argentina'))) return 'soccer_argentina_primera_division'
+
+  if (normalized.includes('primeira liga') || normalized.includes('portugal')) return 'soccer_portugal_primeira_liga'
+  if (normalized.includes('super lig') || normalized.includes('super league') || normalized.includes('turkey') || normalized.includes('turquia')) return 'soccer_turkey_super_league'
+  if (normalized.includes('k league 1') || normalized.includes('k-league 1') || normalized.includes('south korea') || normalized.includes('corea')) return 'soccer_korea_kleague1'
+  if (normalized.includes('champions league') || normalized.includes('uefa champions')) return 'soccer_uefa_champs_league'
+  if (normalized.includes('europa league') || normalized.includes('uefa europa')) return 'soccer_uefa_europa_league'
   
   return null
 }
@@ -48,10 +60,11 @@ function detectSportKey(leagueName) {
  * @param {HistoryEntry[]} pendingEntries - Entradas del historial con estado "Pendiente"
  * @param {Function} onResultUpdate - Callback(entryId, result) cuando se obtiene un resultado
  */
-export function useMatchResults(pendingEntries, onResultUpdate) {
+export function useMatchResults(pendingEntries, onResultUpdate, onMetadataResolved) {
   const [isPolling, setIsPolling] = useState(false)
   const [lastUpdate, setLastUpdate] = useState(null)
   const intervalRef = useRef(null)
+  const pollInFlightRef = useRef(false)
 
   useEffect(() => {
     // Si no hay partidos pendientes, detener polling
@@ -69,11 +82,14 @@ export function useMatchResults(pendingEntries, onResultUpdate) {
 
     // Función de polling
     const poll = async () => {
+      // Evita consultas superpuestas si una respuesta tarda más que el intervalo.
+      if (pollInFlightRef.current) return
+      pollInFlightRef.current = true
       setIsPolling(true)
 
       try {
         // Preparar datos para búsqueda en ESPN
-        const matchesToFind = pendingEntries.map(entry => {
+        const matchesToFind = (await Promise.all(pendingEntries.map(async entry => {
           const [home, away] = entry.match.split(' vs ')
           
           // Intentar obtener sportKey: primero del entry, luego detectarlo de la liga
@@ -85,16 +101,28 @@ export function useMatchResults(pendingEntries, onResultUpdate) {
             }
           }
           
+          let matchId = entry.matchId
+          // Las apuestas guardadas antes de conservar el ID se recuperan por
+          // equipos y fecha. El ID resuelto queda persistido para los próximos polls.
+          if (!Number.isFinite(Number(matchId))) {
+            matchId = await findMatchIdByTeams(home?.trim(), away?.trim(), entry.date)
+            if (matchId != null) {
+              onMetadataResolved?.(entry.id, { matchId, sportKey })
+              console.info(`[Match Results] ID Sofascore recuperado para "${entry.match}": ${matchId}`)
+            }
+          }
+
           return {
             homeTeam: home?.trim() || '',
             awayTeam: away?.trim() || '',
             date: entry.date,
-            matchId: entry.matchId,
-            sportKey: sportKey || 'soccer_epl',  // fallback a Premier League
+            matchId,
+            // No se consulta otra liga como fallback: sería un falso negativo.
+            sportKey,
             entryId: entry.id,
             league: entry.league,
           }
-        }).filter(m => m.homeTeam && m.awayTeam && m.date)
+        }))).filter(m => m.homeTeam && m.awayTeam && m.date)
 
         if (matchesToFind.length === 0) {
           console.warn('[Match Results] No hay partidos con datos válidos para polling')
@@ -161,6 +189,7 @@ export function useMatchResults(pendingEntries, onResultUpdate) {
       } catch (err) {
         console.warn('[Match Results] Error en polling:', err.message)
       } finally {
+        pollInFlightRef.current = false
         setIsPolling(false)
       }
     }
@@ -178,7 +207,7 @@ export function useMatchResults(pendingEntries, onResultUpdate) {
         intervalRef.current = null
       }
     }
-  }, [pendingEntries, onResultUpdate])
+  }, [pendingEntries, onResultUpdate, onMetadataResolved])
 
   return { isPolling, lastUpdate }
 }
