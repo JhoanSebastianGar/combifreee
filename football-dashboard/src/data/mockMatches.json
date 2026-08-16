@@ -1,0 +1,106 @@
+[
+  {
+    "id": 10001,
+    "home": "Real Madrid",
+    "away": "Atlético Madrid",
+    "homeId": 2829,
+    "awayId": 2836,
+    "league": "La Liga",
+    "tournamentId": 8,
+    "seasonId": 61643,
+    "date": "2026-08-16",
+    "time": "21:00",
+    "status": "Not started",
+    "odds": {
+      "homeOdds": 1.72,
+      "drawOdds": 3.60,
+      "awayOdds": 4.80,
+      "homeImplied": 52.4,
+      "drawImplied": 25.6,
+      "awayImplied": 22.0,
+      "overround": 7.2
+    },
+    "form": {
+      "home": { "form": "WWWDW", "avgRating": 7.2, "position": 1, "value": null },
+      "away": { "form": "WDWLW", "avgRating": 6.8, "position": 3, "value": null }
+    }
+  },
+  {
+    "id": 10002,
+    "home": "Manchester City",
+    "away": "Arsenal",
+    "homeId": 17,
+    "awayId": 42,
+    "league": "Premier League",
+    "tournamentId": 17,
+    "seasonId": 61627,
+    "date": "2026-08-16",
+    "time": "17:30",
+    "status": "Not started",
+    "odds": {
+      "homeOdds": 2.05,
+      "drawOdds": 3.40,
+      "awayOdds": 3.60,
+      "homeImplied": 44.1,
+      "drawImplied": 27.0,
+      "awayImplied": 28.9,
+      "overround": 6.8
+    },
+    "form": {
+      "home": { "form": "WDWWL", "avgRating": 7.0, "position": 2, "value": null },
+      "away": { "form": "WWWWD", "avgRating": 7.3, "position": 1, "value": null }
+    }
+  },
+  {
+    "id": 10003,
+    "home": "Bayern München",
+    "away": "Borussia Dortmund",
+    "homeId": 2672,
+    "awayId": 2673,
+    "league": "Bundesliga",
+    "tournamentId": 35,
+    "seasonId": 61644,
+    "date": "2026-08-17",
+    "time": "18:30",
+    "status": "Not started",
+    "odds": {
+      "homeOdds": 1.58,
+      "drawOdds": 4.00,
+      "awayOdds": 5.50,
+      "homeImplied": 56.5,
+      "drawImplied": 22.5,
+      "awayImplied": 21.0,
+      "overround": 8.1
+    },
+    "form": {
+      "home": { "form": "WWWWW", "avgRating": 7.5, "position": 1, "value": null },
+      "away": { "form": "WDLWW", "avgRating": 6.9, "position": 4, "value": null }
+    }
+  },
+  {
+    "id": 10004,
+    "home": "Inter",
+    "away": "AC Milan",
+    "homeId": 2697,
+    "awayId": 2699,
+    "league": "Serie A",
+    "tournamentId": 23,
+    "seasonId": 61645,
+    "date": "2026-08-17",
+    "time": "20:45",
+    "status": "Not started",
+    "odds": {
+      "homeOdds": 2.20,
+      "drawOdds": 3.10,
+      "awayOdds": 3.40,
+      "homeImplied": 41.2,
+      "drawImplied": 29.5,
+      "awayImplied": 29.3,
+      "overround": 5.9
+    },
+    "form": {
+      "home": { "form": "WWDWW", "avgRating": 7.1, "position": 1, "value": null },
+      "away": { "form": "LWWDW", "avgRating": 6.7, "position": 5, "value": null }
+    }
+  }
+]
