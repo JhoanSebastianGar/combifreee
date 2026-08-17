@@ -101,6 +101,37 @@ export default function App() {
   const isLoading = analysis.phase === 'sofascore' || analysis.phase === 'groq'
 
   // ── pipeline ──────────────────────────────────────────────────────────────
+  const sendPredictionsToServer = useCallback(async (opportunities) => {
+    try {
+      if (!opportunities || !opportunities.length) return
+      const payload = {
+        generatedAt: new Date().toISOString(),
+        opportunities: opportunities.map(o => ({
+          date: o.date ?? o.date ?? '',
+          home: o.home ?? (o.match ? String(o.match).split(' vs ')[0] : ''),
+          away: o.away ?? (o.match ? String(o.match).split(' vs ')[1] : ''),
+          fixture_id: o.matchId ?? o.id ?? '',
+          market: o.market ?? '',
+          selection: o.selection ?? '',
+          probabilidad_estimada: o.aiProbability ?? o.aiProbability ?? o.probability ?? '',
+          cuota_real: o.bookmakerOdds ?? o.bookmakerOdds ?? o.odds ?? '',
+          ev_calculado: typeof o.ev !== 'undefined' ? o.ev : (
+            (Number(o.aiProbability) ? (Number(o.aiProbability) / 100.0) * Number(o.bookmakerOdds) * 100.0 - 100.0 : '')
+          )
+        }))
+      }
+
+      // No bloquear la UI si el servidor no responde
+      fetch('http://localhost:3001/api/predictions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).catch(err => console.warn('No se pudo enviar predicciones al servidor:', err))
+    } catch (err) {
+      console.warn('Error preparando predicciones para enviar:', err)
+    }
+  }, [])
+
   const handleAnalyze = useCallback(async () => {
     setAnalysis({ ...INIT, phase: 'sofascore' })
     try {
@@ -115,11 +146,15 @@ export default function App() {
 
       const analyzedOpps = await analyzeMatches(groqKey, rawMatches)
       const opps = attachMatchMetadata(analyzedOpps, rawMatches)
+
+      // Enviar las predicciones al servidor de almacenamiento (no bloqueante)
+      sendPredictionsToServer(opps)
+
       setAnalysis(s => ({ ...s, phase: 'done', opps, lastUpdated: new Date() }))
     } catch (err) {
       setAnalysis(s => ({ ...s, phase: 'error', error: err.message }))
     }
-  }, [groqKey, oddsApiKey, apiFootballKey, date])
+  }, [groqKey, oddsApiKey, apiFootballKey, date, sendPredictionsToServer])
 
   const { phase, loadedCount, totalCount, rawMatches, opps, source, error, lastUpdated } = analysis
   const srcMeta = SOURCE_META[source] ?? SOURCE_META.mock
