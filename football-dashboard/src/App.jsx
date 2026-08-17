@@ -177,7 +177,7 @@ export default function App() {
                 Football Value Finder
               </h1>
               <p className="text-pitch-600 text-xs mt-0.5">
-                Sofascore · Odds API · ESPN · Groq llama-3.3-70b
+                Sofascore · Odds API · ESPN · Groq GPT-OSS-120B
               </p>
             </div>
           </div>

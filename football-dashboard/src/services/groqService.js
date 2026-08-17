@@ -1,13 +1,13 @@
 /**
  * groqService.js
- * Llama a Groq (llama-3.3-70b-versatile) para analizar partidos enriquecidos
+ * Llama a Groq (openai/gpt-oss-120b) para analizar partidos enriquecidos
  * con datos reales de Sofascore (cuotas + forma pre-partido).
  */
 
 import { formatMatchForPrompt } from './sofascoreService.js'
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const MODEL        = 'llama-3.3-70b-versatile'
+const MODEL        = 'openai/gpt-oss-120b'
 export const MINIMUM_ODDS = 1.5
 
 // ─── Prompt ──────────────────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ export async function analyzeMatches(apiKey, matches) {
     .join('\n\n')
 
   const userPrompt =
-    `Analiza los siguientes ${matches.length} partidos con datos reales de Sofascore ` +
+    `Analiza los siguientes ${matches.length} partidos con datos reales ` +
     `y devuelve un array JSON con las oportunidades de valor (EV+) detectadas.\n\n` +
     `${matchBlock}\n\n` +
     `Recuerda: solo incluye selecciones con EV genuinamente positivo.`

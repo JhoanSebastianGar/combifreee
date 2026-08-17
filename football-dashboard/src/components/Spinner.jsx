@@ -47,7 +47,7 @@ export default function Spinner({ phase = 'sofascore', loaded = 0, total = 0 }) 
               IA analizando oportunidades de valor...
             </p>
             <p className="text-pitch-600 text-sm">
-              llama-3.3-70b-versatile · cuotas reales + forma ESPN
+              GPT-OSS-120B · cuotas reales + forma ESPN
             </p>
           </>
         )}

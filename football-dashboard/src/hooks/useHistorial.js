@@ -47,6 +47,128 @@ function save(entries) {
 
 // ─── métricas ─────────────────────────────────────────────────────────────────
 
+/**
+ * Agrupa entries por una clave y calcula métricas para cada grupo.
+ */
+function groupBy(entries, keyFn) {
+  const groups = {}
+  
+  for (const entry of entries) {
+    const key = typeof keyFn === 'function' ? keyFn(entry) : entry[keyFn]
+    if (!key) continue
+    if (!groups[key]) groups[key] = []
+    groups[key].push(entry)
+  }
+  
+  return Object.entries(groups).map(([key, items]) => ({
+    key,
+    ...calcBasicMetrics(items),
+  }))
+}
+
+/**
+ * Calcula métricas básicas para un conjunto de entries.
+ */
+function calcBasicMetrics(entries) {
+  const resolved = entries.filter(e => e.status === 'Ganada' || e.status === 'Perdida')
+  const won = entries.filter(e => e.status === 'Ganada')
+  const lost = entries.filter(e => e.status === 'Perdida')
+  
+  const pl = entries.reduce((acc, e) => {
+    if (e.status === 'Ganada')  return acc + (e.odds - 1) * e.stake
+    if (e.status === 'Perdida') return acc - e.stake
+    return acc
+  }, 0)
+  
+  const staked = resolved.reduce((acc, e) => acc + e.stake, 0)
+  const yield_ = staked > 0 ? (pl / staked) * 100 : 0
+  const winRate = resolved.length > 0 ? (won.length / resolved.length) * 100 : 0
+  
+  return {
+    total: entries.length,
+    won: won.length,
+    lost: lost.length,
+    pl: parseFloat(pl.toFixed(2)),
+    yield: parseFloat(yield_.toFixed(1)),
+    winRate: parseFloat(winRate.toFixed(1)),
+    staked: parseFloat(staked.toFixed(2)),
+  }
+}
+
+/**
+ * Calcula la racha actual (victorias o derrotas consecutivas).
+ */
+function calculateStreak(entries) {
+  const resolved = entries
+    .filter(e => e.status === 'Ganada' || e.status === 'Perdida')
+    .sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt))
+  
+  if (!resolved.length) return { type: null, count: 0 }
+  
+  const firstStatus = resolved[0].status
+  let count = 0
+  
+  for (const entry of resolved) {
+    if (entry.status === firstStatus) count++
+    else break
+  }
+  
+  return {
+    type: firstStatus === 'Ganada' ? 'winning' : 'losing',
+    count,
+  }
+}
+
+/**
+ * Calcula el drawdown máximo (peor racha de pérdidas acumuladas).
+ */
+function calculateMaxDrawdown(entries) {
+  const resolved = entries
+    .filter(e => e.status === 'Ganada' || e.status === 'Perdida')
+    .sort((a, b) => new Date(a.savedAt) - new Date(b.savedAt))
+  
+  let peak = 0
+  let current = 0
+  let maxDrawdown = 0
+  
+  for (const entry of resolved) {
+    if (entry.status === 'Ganada') {
+      current += (entry.odds - 1) * entry.stake
+    } else if (entry.status === 'Perdida') {
+      current -= entry.stake
+    }
+    
+    if (current > peak) peak = current
+    
+    const drawdown = peak - current
+    if (drawdown > maxDrawdown) maxDrawdown = drawdown
+  }
+  
+  return parseFloat(maxDrawdown.toFixed(2))
+}
+
+/**
+ * Clasifica una cuota en un rango.
+ */
+function getOddsRange(odds) {
+  if (odds < 1.5) return '<1.5'
+  if (odds < 2.0) return '1.5-2.0'
+  if (odds < 3.0) return '2.0-3.0'
+  if (odds < 5.0) return '3.0-5.0'
+  return '>5.0'
+}
+
+/**
+ * Clasifica un EV en un rango.
+ */
+function getEVRange(ev) {
+  if (ev < 0) return '<0%'
+  if (ev < 5) return '0-5%'
+  if (ev < 10) return '5-10%'
+  if (ev < 20) return '10-20%'
+  return '>20%'
+}
+
 export function calcMetrics(entries) {
   const resolved  = entries.filter(e => e.status === 'Ganada' || e.status === 'Perdida')
   const won       = entries.filter(e => e.status === 'Ganada')
@@ -68,6 +190,16 @@ export function calcMetrics(entries) {
   const winRate  = resolved.length > 0 ? (won.length / resolved.length) * 100 : 0
   const roi      = staked > 0 ? (pl / staked) * 100 : 0
 
+  // ── Métricas avanzadas ──────────────────────────────────────────────────────
+  
+  const byLeague = groupBy(resolved, 'league')
+  const byMarket = groupBy(resolved, 'market')
+  const byOddsRange = groupBy(resolved, e => getOddsRange(e.odds))
+  const byEVRange = groupBy(resolved, e => getEVRange(e.ev))
+  
+  const streak = calculateStreak(entries)
+  const maxDrawdown = calculateMaxDrawdown(entries)
+
   return {
     pl:       parseFloat(pl.toFixed(2)),
     yield:    parseFloat(yield_.toFixed(1)),
@@ -79,6 +211,14 @@ export function calcMetrics(entries) {
     pending:  pending.length,
     voided:   voided.length,
     staked:   parseFloat(staked.toFixed(2)),
+    
+    // Métricas avanzadas
+    byLeague,
+    byMarket,
+    byOddsRange,
+    byEVRange,
+    streak,
+    maxDrawdown,
   }
 }
 

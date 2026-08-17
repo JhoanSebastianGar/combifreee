@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import MetricCard from './MetricCard.jsx'
+import AdvancedMetrics from './AdvancedMetrics.jsx'
 
 const STATUS_OPTIONS = ['Pendiente', 'Ganada', 'Perdida', 'Anulada']
 
@@ -129,6 +130,7 @@ export default function HistorialView({
   const [filterStatus, setFilterStatus] = useState('Todos')
   const [confirmClear, setConfirmClear] = useState(false)
   const [dateOrder, setDateOrder] = useState('desc')
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   const filtered = filterStatus === 'Todos'
     ? entries
@@ -177,6 +179,23 @@ export default function HistorialView({
 
       {/* ── Gráfico P/L ── */}
       <PLChart entries={entries} />
+
+      {/* ── Toggle Métricas Avanzadas ── */}
+      {entries.filter(e => e.status === 'Ganada' || e.status === 'Perdida').length > 0 && (
+        <div className="flex justify-center">
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="flex items-center gap-2 px-4 py-2 bg-pitch-800 border border-pitch-700 rounded-lg
+                       text-white text-sm font-medium hover:bg-pitch-700 transition-colors"
+          >
+            <span>{showAdvanced ? '📊 Ocultar' : '📊 Ver'} Métricas Avanzadas</span>
+            <span className="text-pitch-600">{showAdvanced ? '▲' : '▼'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* ── Métricas Avanzadas ── */}
+      {showAdvanced && <AdvancedMetrics metrics={metrics} />}
 
       {/* ── Tabla de historial ── */}
       <div className="space-y-3">

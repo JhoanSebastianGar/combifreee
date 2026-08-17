@@ -130,7 +130,7 @@ VITE_APIFOOTBALL_API_KEY=6351441914dbce582c490cc752ca08df
 3. API-Football 🆕
    ↓ (H2H + standings + home advantage)
    
-4. Groq IA (llama-3.3-70b-versatile)
+4. Groq IA (openai/gpt-oss-120b)
    ↓ (análisis con TODAS las variables)
    
 5. Oportunidades EV+ con justificación enriquecida

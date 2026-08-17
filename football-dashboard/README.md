@@ -13,7 +13,7 @@ Dashboard de **value betting** para fútbol con análisis de IA basado en **dato
 - ✅ **H2H** (últimos 5 enfrentamientos directos) con API-Football
 - ✅ **Standings** (posición en tabla + puntos) con API-Football
 - ✅ **Home Advantage** (% victorias en casa) con API-Football
-- ✅ **Análisis de IA** con Groq (llama-3.3-70b-versatile)
+- ✅ **Análisis de IA** con Groq (openai/gpt-oss-120b)
 - ✅ **Cálculo de EV+** (Expected Value) automático
 - ✅ **Cuota mínima de 1.50**: se descartan automáticamente pronósticos con cuotas inferiores
 - ✅ **Historial & Rentabilidad** con métricas (P/L, Yield, Win Rate)
@@ -75,7 +75,7 @@ No publiques el archivo `.env` ni pegues claves en el README, issues o commits.
 3. API-Football ⭐ NUEVO
    ↓ (H2H + standings + home advantage)
    
-4. Groq IA (llama-3.3-70b-versatile)
+4. Groq IA (openai/gpt-oss-120b)
    ↓ (análisis con metodología avanzada)
    
 5. ✨ Oportunidades EV+ con justificación enriquecida
@@ -225,7 +225,7 @@ Esta aplicación es **solo informativa** y para fines educativos.
 
 - **React 18.3** + **Vite 6.4**
 - **Tailwind CSS 3.4**
-- **Groq** (llama-3.3-70b-versatile)
+- **Groq** (openai/gpt-oss-120b)
 - **Sofascore API** (no oficial)
 - **The Odds API**
 - **ESPN API**
